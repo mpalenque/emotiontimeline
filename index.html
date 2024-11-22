@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+
+<head>
+    <title>Audio Timeline with Emotion Keyframes</title>
+    <style>
+        /* Existing styles */
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .timeline {
+            width: 100%;
+            height: 100px;
+            background: #f0f0f0;
+            position: relative;
+            margin: 20px 0;
+            border: 1px solid #ccc;
+            overflow: visible;
+        }
+        .keyframe {
+            position: absolute;
+            width: 8px;
+            height: 30px;
+            bottom: 0;
+            transform: translateX(-50%);
+            cursor: pointer;
+            border: 1px solid rgba(0,0,0,0.3);
+            z-index: 100;
+        }
+        .emotion-1 { 
+            background: #FF4444;
+            border-color: #CC0000;
+        }
+        .emotion-2 { 
+            background: #44FF44;
+            border-color: #00CC00;
+        }
+        .emotion-3 { 
+            background: #4444FF;
+            border-color: #0000CC;
+        }
+        .emotion-4 { 
+            background: #FFFF44;
+            border-color: #CCCC00;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        .playhead {
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            background: #000;
+            top: 0;
+            pointer-events: none;
+            z-index: 50;
+        }
+        /* New waveform styles */
+        .waveform-canvas {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        /* Existing styles continue */
+        button {
+            padding: 8px 16px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+        .recording button#recordBtn {
+            background: red;
+            color: white;
+        }
+        .legend {
+            margin: 10px 0;
+        }
+        .legend span {
+            margin-right: 15px;
+        }
+        .feedback {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            border-radius: 4px;
+            z-index: 1000;
+        }
+
+
+
+        #sphere-container {
+    width: 400px;
+    height: 400px;
+    margin: 20px auto;
+    background: #f0f0f0;
+    border-radius: 8px;
+}
+
+#sphere-container canvas {
+    width: 100%;
+    height: 100%;
+}
+
+
+    </style>
+</head>
+
+
+
+<body>
+
+
+    <div id="sphere-container"></div>
+
+
+    <h1>Audio Timeline with Emotion Keyframes</h1>
+    
+    <input type="file" id="audioFile" accept="audio/*">
+    <audio id="audio"></audio>
+    
+    <div class="controls">
+        <button id="playBtn">▶ Play</button>
+        <button id="stopBtn">⬛ Stop</button>
+        <button id="recordBtn">⚫ Record</button>
+    </div>
+
+    <div class="legend">
+        Press number keys during recording:
+        <span style="color: #FF4444">1: Emotion 1</span>
+        <span style="color: #44FF44">2: Emotion 2</span>
+        <span style="color: #4444FF">3: Emotion 3</span>
+        <span style="color: #FFFF44">4: Emotion 4</span>
+    </div>
+    
+    <div class="timeline" id="timeline">
+        <canvas class="waveform-canvas" id="waveform"></canvas>
+        <div class="playhead" id="playhead"></div>
+    </div>
+    
+    <div id="info">
+        Current time: <span id="currentTime">0.00</span>s / 
+        Duration: <span id="duration">0.00</span>s
+    </div>
+
+    <script>
+        // Existing variables
+        const audio = document.getElementById('audio');
+        const timeline = document.getElementById('timeline');
+        const playhead = document.getElementById('playhead');
+        const playBtn = document.getElementById('playBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const recordBtn = document.getElementById('recordBtn');
+        let isRecording = false;
+        let isAudioLoaded = false;
+        let keyframes = [];
+
+        // New waveform variables
+        let audioContext;
+        let analyser;
+        const canvas = document.getElementById('waveform');
+        const canvasCtx = canvas.getContext('2d');
+
+        // Modified file upload handler
+        document.getElementById('audioFile').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            
+            // Set up Web Audio API
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Load and decode audio file
+            const arrayBuffer = await file.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            // Draw waveform
+            drawWaveform(audioBuffer);
+            
+            // Set up audio element
+            audio.src = URL.createObjectURL(file);
+            isAudioLoaded = true;
+        });
+
+        function drawWaveform(audioBuffer) {
+            const rawData = audioBuffer.getChannelData(0);
+            const samples = 2000;
+            const blockSize = Math.floor(rawData.length / samples);
+            const filteredData = [];
+            
+            // Process audio data
+            for (let i = 0; i < samples; i++) {
+                let blockStart = blockSize * i;
+                let sum = 0;
+                for (let j = 0; j < blockSize; j++) {
+                    sum = sum + Math.abs(rawData[blockStart + j]);
+                }
+                filteredData.push(sum / blockSize);
+            }
+            
+            // Set canvas size
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            // Draw waveform
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+            canvasCtx.beginPath();
+            canvasCtx.strokeStyle = '#666';
+            canvasCtx.lineWidth = 1;
+            
+            const width = canvas.width / filteredData.length;
+            const middle = canvas.height / 2;
+            const scale = canvas.height / 2;
+            
+            canvasCtx.moveTo(0, middle);
+            for (let i = 0; i < filteredData.length; i++) {
+                const x = width * i;
+                const height = filteredData[i] * scale;
+                canvasCtx.lineTo(x, middle + height);
+                canvasCtx.lineTo(x, middle - height);
+            }
+            
+            canvasCtx.stroke();
+        }
+
+        // Existing event listeners
+        playBtn.addEventListener('click', () => {
+            if (audio.paused) {
+                audio.play();
+                playBtn.textContent = "⏸ Pause";
+            } else {
+                audio.pause();
+                playBtn.textContent = "▶ Play";
+            }
+        });
+
+        stopBtn.addEventListener('click', () => {
+            audio.pause();
+            audio.currentTime = 0;
+            isRecording = false;
+            document.body.classList.remove('recording');
+            playBtn.textContent = "▶ Play";
+            recordBtn.textContent = "⚫ Record";
+        });
+
+        recordBtn.addEventListener('click', () => {
+            if (!isAudioLoaded) {
+                alert('Please load an audio file first');
+                return;
+            }
+            isRecording = !isRecording;
+            if (isRecording) {
+                audio.play();
+                document.body.classList.add('recording');
+                recordBtn.textContent = "⚫ Recording...";
+            } else {
+                document.body.classList.remove('recording');
+                recordBtn.textContent = "⚫ Record";
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (isRecording && isAudioLoaded && ['1','2','3','4'].includes(e.key)) {
+                console.log('Recording emotion:', e.key);
+                const emotion = parseInt(e.key);
+                const time = audio.currentTime;
+                addKeyframeMarker(time, emotion);
+                showFeedback(`Emotion ${emotion} recorded at ${time.toFixed(2)}s`);
+            }
+        });
+
+        function showFeedback(message) {
+            const feedback = document.createElement('div');
+            feedback.className = 'feedback';
+            feedback.textContent = message;
+            document.body.appendChild(feedback);
+            setTimeout(() => feedback.remove(), 2000);
+        }
+
+        function addKeyframeMarker(time, emotion) {
+            if (!audio.duration) {
+                console.error('No audio duration available');
+                return;
+            }
+
+            const marker = document.createElement('div');
+            marker.className = `keyframe emotion-${emotion}`;
+            const position = (time / audio.duration * 100);
+            
+            marker.style.left = `${position}%`;
+            marker.title = `Emotion ${emotion} at ${time.toFixed(2)}s`;
+            
+            marker.addEventListener('click', () => {
+                audio.currentTime = time;
+            });
+            
+            timeline.appendChild(marker);
+            keyframes.push({time, emotion, element: marker});
+        }
+
+        audio.addEventListener('timeupdate', () => {
+            const currentTime = audio.currentTime;
+            const duration = audio.duration;
+            document.getElementById('currentTime').textContent = 
+                currentTime.toFixed(2);
+            playhead.style.left = (currentTime / duration * 100) + '%';
+        });
+
+        timeline.addEventListener('click', (e) => {
+            if (!isAudioLoaded) return;
+            const rect = timeline.getBoundingClientRect();
+            const clickPosition = (e.clientX - rect.left) / rect.width;
+            audio.currentTime = clickPosition * audio.duration;
+        });
+
+        audio.addEventListener('ended', () => {
+            playBtn.textContent = "▶ Play";
+            if (isRecording) {
+                isRecording = false;
+                document.body.classList.remove('recording');
+                recordBtn.textContent = "⚫ Record";
+            }
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (audio.src) {
+                fetch(audio.src)
+                    .then(response => response.arrayBuffer())
+                    .then(buffer => audioContext.decodeAudioData(buffer))
+                    .then(audioBuffer => drawWaveform(audioBuffer));
+            }
+        });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// Three.js setup
+let scene, camera, renderer, sphere, leftEye, rightEye;
+
+function initThreeJS() {
+    // Scene setup
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf0f0f0);
+
+    
+    // Camera setup
+    const container = document.getElementById('sphere-container');
+    const aspect = container.clientWidth / container.clientHeight;
+    camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+    camera.position.z = 5;
+
+    // Renderer setup
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    // Create sphere
+    const geometry = new THREE.SphereGeometry(1, 32, 32);
+    const material = new THREE.MeshPhongMaterial({ 
+        color: 0x44FF44,
+        shininess: 100
+    });
+    sphere = new THREE.Mesh(geometry, material);
+    scene.add(sphere);
+
+    // Create eyes
+    const eyeGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+    const eyeMaterial = new THREE.MeshPhongMaterial({ 
+        color: 0x000000,
+        shininess: 100
+    });
+    
+    leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+    rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+    
+    leftEye.position.set(-0.3, 0.2, 0.9);
+    rightEye.position.set(0.3, 0.2, 0.9);
+    
+    sphere.add(leftEye);
+    sphere.add(rightEye);
+
+    // Lighting
+    const frontLight = new THREE.DirectionalLight(0xffffff, 1);
+    frontLight.position.set(0, 0, 5);
+    scene.add(frontLight);
+    let audioAnalyser, audioData;
+    const backLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    backLight.position.set(0, 0, -5);
+    scene.add(backLight);
+    
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+
+    function animate() {
+    requestAnimationFrame(animate);
+    
+    if (audioAnalyser && sphere) {
+        audioAnalyser.getByteFrequencyData(audioData);
+        const average = audioData.reduce((a, b) => a + b) / audioData.length;
+        const normalizedAverage = average / 256.0;
+        const audioOffset = normalizedAverage * 2;
+        sphere.position.y += audioOffset;
+    }
+    
+    renderer.render(scene, camera);
+}
+
+    animate();
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        
+        renderer.setSize(width, height);
+    });
+
+    // Initial sphere position
+    sphere.position.set(0, 0, 0);
+}
+
+// Emotion positions with smoother transitions
+const emotionPositions = {
+    1: { x: -2, y: -2, color: 0xFF4444 }, // Red - Sad
+    2: { x: 2, y: 2, color: 0x44FF44 },   // Green - Happy
+    3: { x: -2, y: 2, color: 0x4444FF },  // Blue - Surprised
+    4: { x: 2, y: -2, color: 0xFFFF44 }   // Yellow - Angry
+};
+
+// Smooth transition function
+function updateSpherePosition(targetX, targetY, targetColor) {
+    const lerp = (start, end, t) => start + (end - start) * t;
+    const lerpSpeed = 0.1;
+
+    sphere.position.x = lerp(sphere.position.x, targetX, lerpSpeed);
+    sphere.position.y = lerp(sphere.position.y, targetY, lerpSpeed);
+    
+    const currentColor = sphere.material.color;
+    const targetColorObj = new THREE.Color(targetColor);
+    
+    currentColor.r = lerp(currentColor.r, targetColorObj.r, lerpSpeed);
+    currentColor.g = lerp(currentColor.g, targetColorObj.g, lerpSpeed);
+    currentColor.b = lerp(currentColor.b, targetColorObj.b, lerpSpeed);
+}
+
+// Update the timeupdate listener
+audio.addEventListener('timeupdate', () => {
+    const currentTime = audio.currentTime;
+    const duration = audio.duration;
+    document.getElementById('currentTime').textContent = currentTime.toFixed(2);
+    playhead.style.left = (currentTime / duration * 100) + '%';
+
+    if (sphere) {
+        let activeKeyframe = keyframes.find(k => 
+            Math.abs(k.time - currentTime) < 0.1
+        );
+
+        if (activeKeyframe) {
+            const pos = emotionPositions[activeKeyframe.emotion];
+            updateSpherePosition(pos.x, pos.y, pos.color);
+        }
+    }
+});
+
+// Initialize Three.js scene
+initThreeJS();
+
+
+
+
+    </script>
+
+
+
+</body>
+</html>
