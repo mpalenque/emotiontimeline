@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio Reactive Face</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, sphere, eyes;
+        let analyser, dataArray;
+        
+        // Initialize Three.js scene
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Create green sphere
+            const geometry = new THREE.SphereGeometry(1, 32, 32);
+            const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+            sphere = new THREE.Mesh(geometry, material);
+            scene.add(sphere);
+
+            // Create eyes
+            const eyeGeometry = new THREE.SphereGeometry(0.2, 32, 32);
+            const eyeMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
+            
+            const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            leftEye.position.set(-0.4, 0.2, 0.8);
+            sphere.add(leftEye);
+
+            const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            rightEye.position.set(0.4, 0.2, 0.8);
+            sphere.add(rightEye);
+
+          // Remove the existing light first
+// Add new lighting setup
+const ambientLight = new THREE.AmbientLight(0x404040); // Soft white light
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+directionalLight.position.set(5, 5, 5);
+directionalLight.castShadow = true;
+scene.add(directionalLight);
+
+const hemisphereLight = new THREE.HemisphereLight(0xffffbb, 0x080820, 0.5);
+scene.add(hemisphereLight);
+
+// Enable shadow rendering
+renderer.shadowMap.enabled = true;
+sphere.castShadow = true;
+sphere.receiveShadow = true;
+
+            camera.position.z = 5;
+
+            // Set up audio analyzer
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    const audioContext = new AudioContext();
+                    const source = audioContext.createMediaStreamSource(stream);
+                    analyser = audioContext.createAnalyser();
+                    source.connect(analyser);
+                    analyser.fftSize = 256;
+                    dataArray = new Uint8Array(analyser.frequencyBinCount);
+                })
+                .catch(err => console.error('Error accessing microphone:', err));
+        }
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (analyser) {
+                analyser.getByteFrequencyData(dataArray);
+                const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                const scale = 1 + (average / 512); // Scale factor based on audio intensity
+                sphere.position.y = (average / 256) - 1; // Vertical position based on audio
+                sphere.scale.set(scale, scale, scale);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        init();
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

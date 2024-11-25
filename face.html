@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Face Landmark Tracking with 3D Sphere</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        .container {
+            display: flex;
+            gap: 20px;
+            position: relative;
+        }
+        #video, #canvas3d {
+            width: 640px;
+            height: 480px;
+        }
+        .pixel-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <video id="video" width="640" height="480" loop autoplay muted></video>
+        <div id="canvas3d"></div>
+        <div class="pixel-info"> <span id="pixelColor" style="color: rgb(0,0,0)">-</span></div>
+    </div>
+
+<script>
+const video = document.getElementById('video');
+video.src = 'video.mp4';
+video.loop = true;
+
+// Video analysis setup
+const videoCanvas = document.createElement('canvas');
+const videoCtx = videoCanvas.getContext('2d');
+videoCanvas.width = 640;
+videoCanvas.height = 480;
+
+// Three.js setup
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, 640/480, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(640, 480);
+document.getElementById('canvas3d').appendChild(renderer.domElement);
+
+
+// Load halo texture
+const textureLoader = new THREE.TextureLoader();
+const haloTexture = textureLoader.load('halo.png');
+const haloGeometry = new THREE.PlaneGeometry(3.3, 3.3); // Adjust size as needed
+const haloMaterial = new THREE.MeshBasicMaterial({ 
+    map: haloTexture,
+    transparent: true,
+    opacity: 0.8
+});
+const halo = new THREE.Mesh(haloGeometry, haloMaterial);
+halo.position.z = -0.5; // Position slightly behind sphere
+scene.add(halo);
+
+// Create sphere with dark blue color
+const sphereGeometry = new THREE.SphereGeometry(1, 32, 32);
+const sphereMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
+const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+scene.add(sphere);
+
+// Create pill-shaped eyes
+const eyeGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.4, 32);
+const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff }); // Changed from MeshPhongMaterial to MeshBasicMaterial
+const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+const rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+
+// Rotate pills to lay flat
+leftEye.rotation.x = Math.PI / 2;
+rightEye.rotation.x = Math.PI / 2;
+
+// Position the eyes
+leftEye.position.set(-0.4, 0.3, 0.8);
+rightEye.position.set(0.4, 0.3, 0.8);
+
+sphere.add(leftEye);
+sphere.add(rightEye);
+
+// Add lighting
+const light = new THREE.DirectionalLight(0x008B8B, 1);
+light.position.set(0, 0, 2);
+scene.add(light);
+camera.position.z = 5;
+
+// Pixel color sampling function
+function getPixelColor() {
+    videoCtx.drawImage(video, 0, 0, videoCanvas.width, videoCanvas.height);
+    const pixel = videoCtx.getImageData(308, 384, 1, 1).data;
+    return {
+        text: `RGB(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`,
+        color: `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`
+    };
+}
+
+// MediaPipe FaceMesh setup
+const faceMesh = new FaceMesh({
+    locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+    }
+});
+
+faceMesh.setOptions({
+    maxNumFaces: 1,
+    refineLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+});
+
+faceMesh.onResults((results) => {
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        const landmarks = results.multiFaceLandmarks[0];
+        
+        // Update sphere position based on nose position (landmark 4)
+        const nose = landmarks[4];
+        sphere.position.x = (nose.x - 0.5) * 5;
+        sphere.position.y = -(nose.y - 0.5) * 5;
+        
+        // Update halo position to match sphere position
+        halo.position.x = sphere.position.x;
+        halo.position.y = sphere.position.y;
+        
+        // Calculate face rotation (only for sphere)
+        const leftEye = landmarks[33];
+        const rightEye = landmarks[263];
+        const angle = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
+        sphere.rotation.z = -angle;
+    }
+});
+
+// Start video and detection
+video.addEventListener('loadeddata', async () => {
+    await faceMesh.initialize();
+    video.play();
+    
+    const animate = async () => {
+        await faceMesh.send({image: video});
+        renderer.render(scene, camera);
+        
+        // Update pixel color display with color
+        const pixelData = getPixelColor();
+        const pixelSpan = document.getElementById('pixelColor');
+        pixelSpan.textContent = pixelData.text;
+        pixelSpan.style.color = pixelData.color;
+        
+        requestAnimationFrame(animate);
+    };
+    animate();
+});
+
+</script>
+</body>
+</html>

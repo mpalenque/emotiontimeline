@@ -2,11 +2,43 @@
 <html>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+
+let scene, camera, renderer, sphere, analyser, dataArray;
 
 
 <head>
     <title>Audio Timeline with Emotion Keyframes</title>
     <style>
+
+
+
+@keyframes emotion1Animation {
+    0% { transform: scale(1) translateX(-50%); }
+    50% { transform: scale(1.5) translateX(-50%) rotate(45deg); }
+    100% { transform: scale(1) translateX(-50%); }
+}
+
+@keyframes emotion2Animation {
+    0% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(-20px); }
+    100% { transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes emotion3Animation {
+    0% { transform: translateX(-50%) rotate(0); }
+    50% { transform: translateX(-50%) rotate(180deg); }
+    100% { transform: translateX(-50%) rotate(360deg); }
+}
+
+@keyframes emotion4Animation {
+    0% { transform: translateX(-50%) skew(0deg); }
+    50% { transform: translateX(-50%) skew(20deg); }
+    100% { transform: translateX(-50%) skew(0deg); }
+}
+
+
+
         /* Existing styles */
         body {
             font-family: Arial, sans-serif;
@@ -32,21 +64,28 @@
             z-index: 100;
         }
         .emotion-1 { 
-            background: #FF4444;
-            border-color: #CC0000;
-        }
-        .emotion-2 { 
-            background: #44FF44;
-            border-color: #00CC00;
-        }
-        .emotion-3 { 
-            background: #4444FF;
-            border-color: #0000CC;
-        }
-        .emotion-4 { 
-            background: #FFFF44;
-            border-color: #CCCC00;
-        }
+    background: #FF4444;
+    border-color: #CC0000;
+    animation: emotion1Animation 0.5s ease-in-out;
+}
+
+.emotion-2 { 
+    background: #44FF44;
+    border-color: #00CC00;
+    animation: emotion2Animation 0.5s ease-in-out;
+}
+
+.emotion-3 { 
+    background: #4444FF;
+    border-color: #0000CC;
+    animation: emotion3Animation 0.5s ease-in-out;
+}
+
+.emotion-4 { 
+    background: #FFFF44;
+    border-color: #CCCC00;
+    animation: emotion4Animation 0.5s ease-in-out;
+}
         .controls {
             margin: 20px 0;
         }
@@ -94,33 +133,22 @@
             border-radius: 4px;
             z-index: 1000;
         }
-
-
-
         #sphere-container {
-    width: 400px;
-    height: 400px;
-    margin: 20px auto;
-    background: #f0f0f0;
-    border-radius: 8px;
-}
-
-#sphere-container canvas {
-    width: 100%;
-    height: 100%;
-}
-
-
+            width: 400px;
+            height: 400px;
+            margin: 20px auto;
+            background: #f0f0f0;
+            border-radius: 8px;
+        }
+        #sphere-container canvas {
+            width: 100%;
+            height: 100%;
+        }
     </style>
 </head>
 
-
-
 <body>
-
-
     <div id="sphere-container"></div>
-
 
     <h1>Audio Timeline with Emotion Keyframes</h1>
     
@@ -338,161 +366,159 @@
             }
         });
 
+        // Three.js setup
+        let scene, camera, renderer, sphere, leftEye, rightEye;
 
+        function initThreeJS() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf0f0f0);
 
+            // Camera setup
+            const container = document.getElementById('sphere-container');
+            const aspect = container.clientWidth / container.clientHeight;
+            camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+            camera.position.z = 5;
 
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
 
+            // Create sphere
+            const geometry = new THREE.SphereGeometry(1, 32, 32);
+            const material = new THREE.MeshPhongMaterial({ 
+                color: 0x44FF44,
+                shininess: 100
+            });
+            sphere = new THREE.Mesh(geometry, material);
+            scene.add(sphere);
 
+            // Create eyes
+            const eyeGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+            const eyeMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x000000,
+                shininess: 100
+            });
+            
+            leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            
+            leftEye.position.set(-0.3, 0.2, 0.9);
+            rightEye.position.set(0.3, 0.2, 0.9);
+            
+            sphere.add(leftEye);
+            sphere.add(rightEye);
 
+            // Lighting
+            const frontLight = new THREE.DirectionalLight(0xffffff, 1);
+            frontLight.position.set(0, 0, 5);
+            scene.add(frontLight);
+            let audioAnalyser, audioData;
+            const backLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            backLight.position.set(0, 0, -5);
+            scene.add(backLight);
+            
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
 
+            function animate() {
+                requestAnimationFrame(animate);
+                
+                if (audioAnalyser && sphere) {
+                    audioAnalyser.getByteFrequencyData(audioData);
+                    const average = audioData.reduce((a, b) => a + b) / audioData.length;
+                    const normalizedAverage = average / 256.0;
+                    const audioOffset = normalizedAverage * 2;
+                    sphere.position.y += audioOffset;
+                }
+                
+                renderer.render(scene, camera);
+            }
 
+            animate();
 
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                
+                renderer.setSize(width, height);
+            });
 
-
-
-
-
-// Three.js setup
-let scene, camera, renderer, sphere, leftEye, rightEye;
-
-function initThreeJS() {
-    // Scene setup
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf0f0f0);
-
-    
-    // Camera setup
-    const container = document.getElementById('sphere-container');
-    const aspect = container.clientWidth / container.clientHeight;
-    camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
-    camera.position.z = 5;
-
-    // Renderer setup
-    renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    container.appendChild(renderer.domElement);
-
-    // Create sphere
-    const geometry = new THREE.SphereGeometry(1, 32, 32);
-    const material = new THREE.MeshPhongMaterial({ 
-        color: 0x44FF44,
-        shininess: 100
-    });
-    sphere = new THREE.Mesh(geometry, material);
-    scene.add(sphere);
-
-    // Create eyes
-    const eyeGeometry = new THREE.SphereGeometry(0.1, 16, 16);
-    const eyeMaterial = new THREE.MeshPhongMaterial({ 
-        color: 0x000000,
-        shininess: 100
-    });
-    
-    leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-    rightEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
-    
-    leftEye.position.set(-0.3, 0.2, 0.9);
-    rightEye.position.set(0.3, 0.2, 0.9);
-    
-    sphere.add(leftEye);
-    sphere.add(rightEye);
-
-    // Lighting
-    const frontLight = new THREE.DirectionalLight(0xffffff, 1);
-    frontLight.position.set(0, 0, 5);
-    scene.add(frontLight);
-    let audioAnalyser, audioData;
-    const backLight = new THREE.DirectionalLight(0xffffff, 0.5);
-    backLight.position.set(0, 0, -5);
-    scene.add(backLight);
-    
-    const ambientLight = new THREE.AmbientLight(0x404040);
-    scene.add(ambientLight);
-
-    function animate() {
-    requestAnimationFrame(animate);
-    
-    if (audioAnalyser && sphere) {
-        audioAnalyser.getByteFrequencyData(audioData);
-        const average = audioData.reduce((a, b) => a + b) / audioData.length;
-        const normalizedAverage = average / 256.0;
-        const audioOffset = normalizedAverage * 2;
-        sphere.position.y += audioOffset;
-    }
-    
-    renderer.render(scene, camera);
-}
-
-    animate();
-
-    // Handle window resize
-    window.addEventListener('resize', () => {
-        const width = container.clientWidth;
-        const height = container.clientHeight;
-        
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        
-        renderer.setSize(width, height);
-    });
-
-    // Initial sphere position
-    sphere.position.set(0, 0, 0);
-}
-
-// Emotion positions with smoother transitions
-const emotionPositions = {
-    1: { x: -2, y: -2, color: 0xFF4444 }, // Red - Sad
-    2: { x: 2, y: 2, color: 0x44FF44 },   // Green - Happy
-    3: { x: -2, y: 2, color: 0x4444FF },  // Blue - Surprised
-    4: { x: 2, y: -2, color: 0xFFFF44 }   // Yellow - Angry
-};
-
-// Smooth transition function
-function updateSpherePosition(targetX, targetY, targetColor) {
-    const lerp = (start, end, t) => start + (end - start) * t;
-    const lerpSpeed = 0.1;
-
-    sphere.position.x = lerp(sphere.position.x, targetX, lerpSpeed);
-    sphere.position.y = lerp(sphere.position.y, targetY, lerpSpeed);
-    
-    const currentColor = sphere.material.color;
-    const targetColorObj = new THREE.Color(targetColor);
-    
-    currentColor.r = lerp(currentColor.r, targetColorObj.r, lerpSpeed);
-    currentColor.g = lerp(currentColor.g, targetColorObj.g, lerpSpeed);
-    currentColor.b = lerp(currentColor.b, targetColorObj.b, lerpSpeed);
-}
-
-// Update the timeupdate listener
-audio.addEventListener('timeupdate', () => {
-    const currentTime = audio.currentTime;
-    const duration = audio.duration;
-    document.getElementById('currentTime').textContent = currentTime.toFixed(2);
-    playhead.style.left = (currentTime / duration * 100) + '%';
-
-    if (sphere) {
-        let activeKeyframe = keyframes.find(k => 
-            Math.abs(k.time - currentTime) < 0.1
-        );
-
-        if (activeKeyframe) {
-            const pos = emotionPositions[activeKeyframe.emotion];
-            updateSpherePosition(pos.x, pos.y, pos.color);
+            // Initial sphere position
+            sphere.position.set(0, 0, 0);
         }
-    }
-});
 
-// Initialize Three.js scene
-initThreeJS();
+        // Emotion positions with smoother transitions
+        const emotionPositions = {
+            1: { x: -2, y: -2, color: 0xFF4444 }, // Red - Sad
+            2: { x: 2, y: 2, color: 0x44FF44 },   // Green - Happy
+            3: { x: -2, y: 2, color: 0x4444FF },  // Blue - Surprised
+            4: { x: 2, y: -2, color: 0xFFFF44 }   // Yellow - Angry
+        };
 
+        // Smooth transition function
+        function updateSpherePosition(targetX, targetY, targetColor, emotion) {
+            const lerp = (start, end, t) => start + (end - start) * t;
+            const lerpSpeed = 0.1;
 
+            sphere.position.x = lerp(sphere.position.x, targetX, lerpSpeed);
+            sphere.position.y = lerp(sphere.position.y, targetY, lerpSpeed);
+            
+            const currentColor = sphere.material.color;
+            const targetColorObj = new THREE.Color(targetColor);
+            
+            currentColor.r = lerp(currentColor.r, targetColorObj.r, lerpSpeed);
+            currentColor.g = lerp(currentColor.g, targetColorObj.g, lerpSpeed);
+            currentColor.b = lerp(currentColor.b, targetColorObj.b, lerpSpeed);
 
+            switch (emotion) {
+                case 1:
+                    // Esfera salta 1 y rota 30%
+                    gsap.to(sphere.position, { y: sphere.position.y + 1, duration: 0.5, yoyo: true, repeat: 1 });
+                    gsap.to(sphere.rotation, { z: Math.PI / 6, duration: 0.5, yoyo: true, repeat: 1 });
+                    break;
+                case 2:
+                    // Esfera rota 4 vueltas y vuelve como estaba con un efecto resorte
+                    gsap.to(sphere.rotation, { z: Math.PI * 8, duration: 2, ease: "elastic.out(1, 0.3)" });
+                    break;
+                case 3:
+                    // Esfera rota muy lentamente 60 grados y vuelve a su posición
+                    gsap.to(sphere.rotation, { z: Math.PI / 3, duration: 2, yoyo: true, repeat: 1 });
+                    break;
+                case 4:
+                    // Esfera se aplasta a la mitad y vuelve a estirarse rápido
+                    gsap.to(sphere.scale, { y: 0.5, duration: 0.5, yoyo: true, repeat: 1 });
+                    break;
+            }
+        }
 
+        // Update the timeupdate listener
+        audio.addEventListener('timeupdate', () => {
+            const currentTime = audio.currentTime;
+            const duration = audio.duration;
+            document.getElementById('currentTime').textContent = currentTime.toFixed(2);
+            playhead.style.left = (currentTime / duration * 100) + '%';
+
+            if (sphere) {
+                let activeKeyframe = keyframes.find(k => 
+                    Math.abs(k.time - currentTime) < 0.1
+                );
+
+                if (activeKeyframe) {
+                    const pos = emotionPositions[activeKeyframe.emotion];
+                    updateSpherePosition(pos.x, pos.y, pos.color, activeKeyframe.emotion);
+                }
+            }
+        });
+
+        // Initialize Three.js scene
+        initThreeJS();
     </script>
-
-
-
 </body>
 </html>
